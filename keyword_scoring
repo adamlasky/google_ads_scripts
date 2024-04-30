@@ -18,7 +18,7 @@
 var SPREADSHEET_ID = 'insert your spreadsheet ID here'; // Update with your actual Google Sheet ID
 
 var SETTINGS = {
-  campaignNameContains: "golf", // Specify part of the campaign name to include
+  campaignNameContains: "insert campaign name here", // Specify part of the campaign name to include
   keywordScoreWeights: { // Weights for calculating the keyword score
     ctrWeight: 0.4,
     costWeight: 0.2,

@@ -1,0 +1,185 @@
+// Copyright 2024. Adam Lasky. All Rights Reserved.
+// Keyword Scoring Script
+// Have custom requests? Email me at adam@adamlasky.me
+//
+// v1 - initial release
+//
+// -- Make sure you visit https://www.adamlasky.me for more resources
+//
+// ABOUT THE SCRIPT
+// This script fetches keyword performance by CTR, cost, conversions, CPA, and quality score   
+// then categorizes the keywords based on their relative performance as: 'over-performing', 'performing', 'under-performing'
+// and recommends actions to be taken per keyword.
+// 
+// IMPORTANT NOTES
+// Create a Google Sheet and insert the ID in the Customization Section below
+
+// ---- Customization Section ----
+var SPREADSHEET_ID = 'insert your spreadsheet ID here'; // Update with your actual Google Sheet ID
+
+var SETTINGS = {
+  campaignNameContains: "golf", // Specify part of the campaign name to include
+  keywordScoreWeights: { // Weights for calculating the keyword score
+    ctrWeight: 0.4,
+    costWeight: 0.2,
+    conversionsWeight: 0.2,
+    qualityScoreWeight: 0.2 // Added weight for quality score
+  },
+  performanceThresholds: { // Customizable thresholds for performance labeling
+    high: { qualityScore: 7, ctr: 5, conversions: 5 },
+    low: { qualityScore: 5, conversions: 1 }
+  }
+};
+
+// ---- Script Starts Below ----
+function main() {
+  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  
+  var allKeywordsSheet = getOrCreateSheet(spreadsheet, 'Sheet1');
+  var exactSheet = getOrCreateSheet(spreadsheet, 'Exact Match');
+  var phraseSheet = getOrCreateSheet(spreadsheet, 'Phrase Match');
+  var broadSheet = getOrCreateSheet(spreadsheet, 'Broad Match');
+
+  var headers = ['Campaign Name', 'Keyword', 'Match Type', 'Keyword Score', 'CTR', 'Cost', 'Conversions', 'CPA', 'Performance Label', 'Suggested Action'];
+  clearAndSetHeaders(allKeywordsSheet, headers);
+  clearAndSetHeaders(exactSheet, headers);
+  clearAndSetHeaders(phraseSheet, headers);
+  clearAndSetHeaders(broadSheet, headers);
+
+  processCampaignKeywords(allKeywordsSheet, exactSheet, phraseSheet, broadSheet);
+}
+
+function getOrCreateSheet(spreadsheet, sheetName) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+  } else {
+    sheet.clear();
+  }
+  return sheet;
+}
+
+function clearAndSetHeaders(sheet, headers) {
+  sheet.clear();
+  sheet.appendRow(headers);
+}
+
+function processCampaignKeywords(allKeywordsSheet, exactSheet, phraseSheet, broadSheet) {
+  var processedKeywords = new Set();
+
+  var campaignIterator = AdsApp.campaigns()
+    .withCondition('Name CONTAINS_IGNORE_CASE "' + SETTINGS.campaignNameContains + '"')
+    .withCondition("Status = ENABLED")  // Only fetch enabled campaigns
+    .forDateRange("LAST_30_DAYS")
+    .get();
+
+  while (campaignIterator.hasNext()) {
+    var campaign = campaignIterator.next();
+    var campaignName = campaign.getName();  // Use full campaign name
+    var biddingStrategy = campaign.getBiddingStrategyType();  // Get the bidding strategy type of the campaign
+
+    var keywordIterator = campaign.keywords()
+      .withCondition("Status = ENABLED")  // Ensures only enabled keywords are processed
+      .orderBy('QualityScore DESC')
+      .forDateRange("LAST_30_DAYS")
+      .get();
+
+    while (keywordIterator.hasNext()) {
+      var keyword = keywordIterator.next();
+      var stats = keyword.getStatsFor("LAST_30_DAYS");
+      var keywordText = keyword.getText();
+      var matchType = keyword.getMatchType();
+      var keywordScore = calculateKeywordScore(keyword, stats);
+      var ctr = (stats.getImpressions() > 0) ? (stats.getClicks() / stats.getImpressions()) * 100 : 0;
+      var cost = stats.getCost();
+      var conversions = stats.getConversions();
+      var cpa = conversions > 0 ? cost / conversions : 0;
+      var performanceLabel = getPerformanceLabel(keywordScore, keyword.getQualityScore(), ctr, conversions);
+      var suggestedAction = getSuggestedAction(keyword.getQualityScore(), ctr, conversions, biddingStrategy);  // Pass bidding strategy here
+
+      var uniqueId = campaignName + '|' + keywordText;
+      if (!processedKeywords.has(uniqueId)) {
+        processedKeywords.add(uniqueId);
+        var dataRow = [campaignName, keywordText, matchType, keywordScore.toFixed(2), ctr.toFixed(2) + '%', cost.toFixed(2), conversions, cpa.toFixed(2), performanceLabel, suggestedAction];
+
+        // Append dataRow to the appropriate sheet based on match type
+        appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phraseSheet, broadSheet);
+      }
+    }
+  }
+}
+
+function appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phraseSheet, broadSheet) {
+  allKeywordsSheet.appendRow(dataRow);
+  switch (matchType) {
+    case 'EXACT': exactSheet.appendRow(dataRow); break;
+    case 'PHRASE': phraseSheet.appendRow(dataRow); break;
+    case 'BROAD': broadSheet.appendRow(dataRow); break;
+  }
+}
+
+function calculateKeywordScore(keyword, stats) {
+    var clicks = parseFloat(stats.clicks) || 0;
+    var impressions = parseFloat(stats.impressions) || 0;
+    var cost = parseFloat(stats.cost) || 0;
+    var conversions = parseFloat(stats.conversions) || 0;
+    var qualityScore = keyword.getQualityScore() || 0;
+
+    var ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+
+    var score = (ctr * SETTINGS.keywordScoreWeights.ctrWeight) +
+                ((100 - cost) * SETTINGS.keywordScoreWeights.costWeight) +
+                (conversions * SETTINGS.keywordScoreWeights.conversionsWeight) +
+                (qualityScore * SETTINGS.keywordScoreWeights.qualityScoreWeight);
+
+    return score;
+}
+
+function getPerformanceLabel(score, qualityScore, ctr, conversions) {
+  var thresholds = SETTINGS.performanceThresholds;
+  if (qualityScore >= thresholds.high.qualityScore && ctr >= thresholds.high.ctr && conversions >= thresholds.high.conversions) {
+    return 'Over-performing';
+  } else if (qualityScore <= thresholds.low.qualityScore && conversions <= thresholds.low.conversions) {
+    return 'Under-performing';
+  } else {
+    return 'Performing';
+  }
+}
+
+function getSuggestedAction(qualityScore, ctr, conversions, campaignBiddingStrategy) {
+    let actions = {
+        'Over-performing': [
+            "Expand keywords based on current success patterns",
+            "Tailor ad copy to enhance alignment with search intent",
+            "Optimize landing pages to improve conversion rates further",
+            "Experiment with different ad formats like Responsive Search Ads",
+            "Implement or enhance RLSA strategies"
+        ],
+        'Performing': [
+            "Review and refine match types for balance",
+            "Optimize ad scheduling based on performance data",
+            "Conduct A/B testing on ad elements",
+            "Enhance ad extensions with additional information or links",
+            "Use insights in other marketing channels like SEO or email"
+        ],
+        'Under-performing': [
+            "Pause or remove non-performing keywords",
+            "Adjust match types to prevent low-quality matches",
+            "Redesign landing pages if conversion rates are low",
+            "Reevaluate keyword groupings within ad groups"
+        ]
+    };
+
+    if (campaignBiddingStrategy.includes("Maximize Conversions") || campaignBiddingStrategy.includes("Maximize Conversion Value")) {
+        actions['Over-performing'].push("Increase budget focus on improving ad quality and expanding audiences");
+        actions['Under-performing'].push("Cannot adjust bids directly, focus on improving ad relevance and quality score");
+    }
+
+    if (qualityScore >= SETTINGS.performanceThresholds.high.qualityScore && ctr >= SETTINGS.performanceThresholds.high.ctr && conversions >= SETTINGS.performanceThresholds.high.conversions) {
+        return actions['Over-performing'].join(", ");
+    } else if (qualityScore <= SETTINGS.performanceThresholds.low.qualityScore && conversions <= SETTINGS.performanceThresholds.low.conversions) {
+        return actions['Under-performing'].join(", ");
+    } else {
+        return actions['Performing'].join(", ");
+    }
+}

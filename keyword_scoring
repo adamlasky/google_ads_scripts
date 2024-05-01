@@ -2,7 +2,7 @@
 // Keyword Scoring Script
 // Have custom requests? Email me at adam@adamlasky.me
 //
-// v2 - initial release
+// v2 
 //
 // -- Make sure you visit https://www.adamlasky.me for more resources
 //
@@ -12,7 +12,7 @@
 // and recommends actions to be taken per keyword.
 // 
 // IMPORTANT NOTES
-// Create a Google Sheet and insert the ID in the Customization Section below
+// Create a Google Sheet and insert the URL in the Customization Section below
 
 // ---- Customization Section ----
 var SPREADSHEET_URL = 'insert your spreadsheet URL here'; // Update with your actual Google Sheet URL
@@ -20,7 +20,7 @@ var SPREADSHEET_URL = 'insert your spreadsheet URL here'; // Update with your ac
 var SETTINGS = {
   campaignNameContains: "insert your campaign name here", // Specify part of the campaign name to include
   keywordScoreWeights: { // Weights for calculating the keyword score
-    ctrWeight: 0.4,
+    ctrWeight: 0.1,
     costWeight: 0.2,
     conversionsWeight: 0.2,
     qualityScoreWeight: 0.2 // Added weight for quality score

@@ -7,7 +7,7 @@
 // -- Make sure you visit https://www.adamlasky.me for more resources
 //
 // ABOUT THE SCRIPT
-// This script fetches keyword performance by CTR, cost, conversions, CPA, and quality score   
+// This script fetches keyword performance by CTR, cost, conversions, CPA, quality score, and conversion value
 // then categorizes the keywords based on their relative performance as: 'over-performing', 'performing', 'under-performing'
 // and recommends actions to be taken per keyword.
 // 
@@ -15,10 +15,10 @@
 // Create a Google Sheet and insert the URL in the Customization Section below
 
 // ---- Customization Section ----
-var SPREADSHEET_URL = 'insert your spreadsheet URL here'; // Update with your actual Google Sheet URL
+var SPREADSHEET_URL = 'insert Google Sheet URL here'; // Update with your actual Google Sheet URL
 
 var SETTINGS = {
-  campaignNameContains: "insert your campaign name here", // Specify part of the campaign name to include
+  campaignNameContains: "insert campaign name here", // Specify part of the campaign name to include
   keywordScoreWeights: { // Weights for calculating the keyword score
     ctrWeight: 0.1,
     costWeight: 0.2,
@@ -31,16 +31,14 @@ var SETTINGS = {
   }
 };
 
-// ---- Script Starts Below ----
 function main() {
   var spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
-  
   var allKeywordsSheet = getOrCreateSheet(spreadsheet, 'Sheet1');
   var exactSheet = getOrCreateSheet(spreadsheet, 'Exact Match');
   var phraseSheet = getOrCreateSheet(spreadsheet, 'Phrase Match');
   var broadSheet = getOrCreateSheet(spreadsheet, 'Broad Match');
 
-  var headers = ['Campaign Name', 'Keyword', 'Match Type', 'Keyword Score', 'CTR', 'Cost', 'Conversions', 'CPA', 'Performance Label', 'Suggested Action'];
+  var headers = ['Campaign Name', 'Keyword', 'Match Type', 'Keyword Score', 'CTR', 'Cost', 'Conversions', 'Conversion Value', 'CPA', 'ROAS', 'Performance Label', 'Suggested Action'];
   clearAndSetHeaders(allKeywordsSheet, headers);
   clearAndSetHeaders(exactSheet, headers);
   clearAndSetHeaders(phraseSheet, headers);
@@ -65,50 +63,35 @@ function clearAndSetHeaders(sheet, headers) {
 }
 
 function processCampaignKeywords(allKeywordsSheet, exactSheet, phraseSheet, broadSheet) {
-  var processedKeywords = new Set();
+  var query = "SELECT CampaignName, Criteria, KeywordMatchType, Impressions, Clicks, Cost, Conversions, ConversionValue " +
+              "FROM KEYWORDS_PERFORMANCE_REPORT " +
+              "WHERE CampaignStatus = 'ENABLED' AND AdGroupStatus = 'ENABLED' AND Status = 'ENABLED' " +
+              "AND CampaignName CONTAINS_IGNORE_CASE '" + SETTINGS.campaignNameContains + "' " +
+              "DURING LAST_30_DAYS";
 
-  var campaignIterator = AdsApp.campaigns()
-    .withCondition('Name CONTAINS_IGNORE_CASE "' + SETTINGS.campaignNameContains + '"')
-    .withCondition("Status = ENABLED")  // Only fetch enabled campaigns
-    .forDateRange("LAST_30_DAYS")
-    .get();
+  var report = AdsApp.report(query);
+  var rows = report.rows();
+  while (rows.hasNext()) {
+    var row = rows.next();
+    var campaignName = row['CampaignName'];
+    var keywordText = row['Criteria'];
+    var matchType = row['KeywordMatchType'];
+    var impressions = parseInt(row['Impressions'], 10);
+    var clicks = parseInt(row['Clicks'], 10);
+    var cost = parseFloat(row['Cost']);
+    var conversions = parseInt(row['Conversions'], 10);
+    var conversionValue = parseFloat(row['ConversionValue']);
+    var ctr = (impressions > 0) ? (clicks / impressions * 100).toFixed(2) : 0;
+    var cpa = (conversions > 0) ? (cost / conversions).toFixed(2) : 0;
+    var roas = (cost > 0) ? (conversionValue / cost).toFixed(2) : 0;
+    var keywordScore = calculateKeywordScore(ctr, cost, conversions, conversionValue);
+    var performanceLabel = getPerformanceLabel(keywordScore, SETTINGS.performanceThresholds);
+    var suggestedAction = getSuggestedAction(performanceLabel);
 
-  while (campaignIterator.hasNext()) {
-    var campaign = campaignIterator.next();
-    var campaignName = campaign.getName();  // Use full campaign name
-    var biddingStrategy = campaign.getBiddingStrategyType();  // Get the bidding strategy type of the campaign
-
-    var keywordIterator = campaign.keywords()
-      .withCondition("Status = ENABLED")  // Ensures only enabled keywords are processed
-      .orderBy('QualityScore DESC')
-      .forDateRange("LAST_30_DAYS")
-      .get();
-
-    while (keywordIterator.hasNext()) {
-      var keyword = keywordIterator.next();
-      var stats = keyword.getStatsFor("LAST_30_DAYS");
-      var keywordText = keyword.getText();
-      var matchType = keyword.getMatchType();
-      var keywordScore = calculateKeywordScore(keyword, stats);
-      var ctr = (stats.getImpressions() > 0) ? (stats.getClicks() / stats.getImpressions()) * 100 : 0;
-      var cost = stats.getCost();
-      var conversions = stats.getConversions();
-      var cpa = conversions > 0 ? cost / conversions : 0;
-      var performanceLabel = getPerformanceLabel(keywordScore, keyword.getQualityScore(), ctr, conversions);
-      var suggestedAction = getSuggestedAction(keyword.getQualityScore(), ctr, conversions, biddingStrategy);  // Pass bidding strategy here
-
-      var uniqueId = campaignName + '|' + keywordText;
-      if (!processedKeywords.has(uniqueId)) {
-        processedKeywords.add(uniqueId);
-        var dataRow = [campaignName, keywordText, matchType, keywordScore.toFixed(2), ctr.toFixed(2) + '%', cost.toFixed(2), conversions, cpa.toFixed(2), performanceLabel, suggestedAction];
-
-        // Append dataRow to the appropriate sheet based on match type
-        appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phraseSheet, broadSheet);
-      }
-    }
+    var dataRow = [campaignName, keywordText, matchType, keywordScore, ctr + '%', cost.toFixed(2), conversions, conversionValue.toFixed(2), cpa, roas, performanceLabel, suggestedAction];
+    appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phraseSheet, broadSheet);
   }
 }
-
 
 function appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phraseSheet, broadSheet) {
   allKeywordsSheet.appendRow(dataRow);
@@ -119,47 +102,30 @@ function appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phra
   }
 }
 
-function calculateKeywordScore(keyword, stats) {
-    var clicks = parseFloat(stats.clicks) || 0;
-    var impressions = parseFloat(stats.impressions) || 0;
-    var cost = parseFloat(stats.cost) || 0;
-    var conversions = parseFloat(stats.conversions) || 0;
-    var qualityScore = keyword.getQualityScore() || 0;
-
-    var ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-
-    var score = (ctr * SETTINGS.keywordScoreWeights.ctrWeight) +
-                ((100 - cost) * SETTINGS.keywordScoreWeights.costWeight) +
-                (conversions * SETTINGS.keywordScoreWeights.conversionsWeight) +
-                (qualityScore * SETTINGS.keywordScoreWeights.qualityScoreWeight);
-
-    return score;
+function calculateKeywordScore(ctr, cost, conversions, conversionValue) {
+  return SETTINGS.keywordScoreWeights.ctrWeight * ctr +
+         SETTINGS.keywordScoreWeights.costWeight * cost +
+         SETTINGS.keywordScoreWeights.conversionsWeight * conversions +
+         SETTINGS.keywordScoreWeights.qualityScoreWeight * conversionValue; // Adjust weights and metrics as needed
 }
 
-function getPerformanceLabel(score, qualityScore, ctr, conversions) {
-  var thresholds = SETTINGS.performanceThresholds;
-  if (qualityScore >= thresholds.high.qualityScore && ctr >= thresholds.high.ctr && conversions >= thresholds.high.conversions) {
+function getPerformanceLabel(score, thresholds) {
+  if (score >= thresholds.high) {
     return 'Over-performing';
-  } else if (qualityScore <= thresholds.low.qualityScore && conversions <= thresholds.low.conversions) {
+  } else if (score <= thresholds.low) {
     return 'Under-performing';
   } else {
     return 'Performing';
   }
 }
 
-function getSuggestedAction(qualityScore, ctr, conversions, biddingStrategy) {
-  var action = "";
-  if (biddingStrategy.includes("Maximize Conversions") || biddingStrategy.includes("Maximize Conversion Value")) {
-    // Actions specific to smart bidding strategies
-    action += "Note: Cannot adjust bids directly due to smart bidding strategy. Focus on improving ad quality and expanding target audiences.";
-  }
-  
-  if (qualityScore >= SETTINGS.performanceThresholds.high.qualityScore && ctr >= SETTINGS.performanceThresholds.high.ctr && conversions >= SETTINGS.performanceThresholds.high.conversions) {
-    action += " Consider narrowing match type for increased relevance. Create a separate campaign for this keyword for better budget control.";
-  } else if (qualityScore <= SETTINGS.performanceThresholds.low.qualityScore && conversions <= SETTINGS.performanceThresholds.low.conversions) {
-    action += " Experiment with broader match types to capture wider audience. Group underperforming keywords separately for targeted improvement testing.";
+function getSuggestedAction(performanceLabel) {
+  if (performanceLabel === 'Over-performing') {
+    return "Expand targeting and increase budget for high-performing keywords.";
+  } else if (performanceLabel === 'Under-performing') {
+    return "Reduce bids or pause under-performing keywords.";
   } else {
-    action += " Monitor and optimize creative & landing pages. Check search terms report for new keyword opportunities.";
+    return "Continue to monitor and optimize.";
   }
-  return action;
 }
+

@@ -2,17 +2,16 @@
 // Keyword Scoring Script
 // Have custom requests? Email me at adam@adamlasky.me
 //
-// v2
-//
-// Make sure you visit https://www.adamlasky.me for more resources
+// v.2
 //
 // ABOUT THE SCRIPT
 // This script fetches keyword performance by clicks, conversions, cost, and CPA
-// then categorizes the keywords based on their relative performance as: 'over-performing', 'under-performing', 'needs attention', and 'not enough data'
+// then categorizes the keywords based on their relative performance as: 'over-performing', 'cash-burner', 'under-performing', and 'not enough data'
 // and recommends actions to be taken per keyword.
 // 
 // IMPORTANT NOTES
 // Create a Google Sheet and insert the URL in the Customization Section below
+// Customize the cpaHigh, cpaLow, clicksMinimum, conversionsMinimum, and costMinimum thresholds to determine performance labels
 
 // ---- Customization Section ----
 var SPREADSHEET_URL = 'insert Google Sheet URL here'; // Update with your actual Google Sheet URL
@@ -28,11 +27,14 @@ var SETTINGS = {
   }
 };
 
+// Start script, don't add anything below this line
+////////////////////////////////////////////////////////////////////
+        
 function main() {
   var spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
   var sheet = getOrCreateSheet(spreadsheet, 'Keyword Performance');
 
-  var headers = ['Campaign Name', 'Keyword', 'Match Type', 'Clicks', 'Cost', 'Conversions', 'CPA', 'Performance Label'];
+  var headers = ['Campaign Name', 'Keyword', 'Match Type', 'Clicks', 'Cost', 'Conversions', 'CPA', 'Performance Label', 'Suggested Action'];
   clearAndSetHeaders(sheet, headers);
 
   processKeywords(sheet);
@@ -75,10 +77,11 @@ function processKeywords(sheet) {
       var conversions = parseInt(stats.getConversions(), 10);
       var cpa = conversions > 0 ? cost / conversions : 0;
       var performanceLabel = getPerformanceLabel(clicks, cost, conversions, cpa);
+      var suggestedAction = getSuggestedAction(performanceLabel); // Retrieve suggested action based on performance label
 
       var dataRow = [
         campaignName, keyword.getText(), keyword.getMatchType(), clicks, cost.toFixed(2),
-        conversions, cpa.toFixed(2), performanceLabel
+        conversions, cpa.toFixed(2), performanceLabel, suggestedAction
       ];
       sheet.appendRow(dataRow);
     }
@@ -88,33 +91,26 @@ function processKeywords(sheet) {
 function getPerformanceLabel(clicks, cost, conversions, cpa) {
   var t = SETTINGS.thresholds;
   
-  // Check if 'Over-performing'
   if (cpa < t.cpaHigh && cpa > t.cpaLow) {
     return 'Over-performing';
-  }
-
-  // Check if 'Cash burner'
-  if (cpa > t.cpaHigh) {
-    return 'Cash burner';
-  }
-
-  // Check if 'Under-performing'
-  if (cost > t.costMinimum && conversions < t.conversionsMinimum) {
+  } else if (cpa > t.cpaHigh) {
+    return 'Cash-burner';
+  } else if (cost > t.costMinimum && conversions < t.conversionsMinimum) {
     return 'Under-performing';
   }
-
-  // Default case for all other conditions
-  return 'Not enough data';
+  return 'Not enough data'; // Default case for all other conditions
 }
 
 function getSuggestedAction(performanceLabel) {
-  if (performanceLabel === 'Over-performing') {
-    return "Expand keywords based on current success patterns, tailor ad copy to enhance alignment with search intent, optimize landing pages to improve conversion rates further, experiment with different ad formats like Responsive Search Ads, implement or enhance RLSA strategies.";
-  } else if (performanceLabel === 'Under-performing') {
-    return "Reduce bids or pause under-performing keywords, pause or remove non-performing keywords, adjust match types to prevent low-quality matches, redesign landing pages if conversion rates are low, reevaluate keyword groupings within ad groups.";
-  } else if (performanceLabel === 'Cash-burner') {
-    return "Pause cash-burning keywords.";
-  } else {
-    return "Continue to monitor and optimize.";
+  switch(performanceLabel) {
+    case 'Over-performing':
+      return "Expand keywords based on current success patterns, tailor ad copy to enhance alignment with search intent, optimize landing pages to improve conversion rates further, experiment with different ad formats like Responsive Search Ads, implement or enhance RLSA strategies.";
+    case 'Under-performing':
+      return "Reduce bids or pause under-performing keywords, pause or remove non-performing keywords, adjust match types to prevent low-quality matches, redesign landing pages if conversion rates are low, reevaluate keyword groupings within ad groups.";
+    case 'Cash-burner':
+      return "Pause cash-burning keywords.";
+    default:
+      return "Continue to monitor and optimize.";
   }
 }
+

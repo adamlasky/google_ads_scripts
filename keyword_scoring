@@ -2,7 +2,7 @@
 // Keyword Scoring Script
 // Have custom requests? Email me at adam@adamlasky.me
 //
-// v2
+// v1 - initial release
 //
 // -- Make sure you visit https://www.adamlasky.me for more resources
 //
@@ -12,13 +12,13 @@
 // and recommends actions to be taken per keyword.
 // 
 // IMPORTANT NOTES
-// Create a Google Sheet and insert the URL in the Customization Section below
+// Create a Google Sheet and insert the ID in the Customization Section below
 
 // ---- Customization Section ----
-var SPREADSHEET_URL = 'insert your spreadsheet URL here'; // Update with your actual Google Sheet URL
+var SPREADSHEET_ID = '1mehVKMBrx5nEAPjQC-zS3rEYKIbG0MG__KFqrr1QJzk'; // Update with your actual Google Sheet ID
 
 var SETTINGS = {
-  campaignNameContains: "insert campaign name here", // Specify part of the campaign name to include
+  campaignNameContains: "golfing", // Specify part of the campaign name to include
   keywordScoreWeights: { // Weights for calculating the keyword score
     ctrWeight: 0.4,
     costWeight: 0.2,
@@ -33,7 +33,7 @@ var SETTINGS = {
 
 // ---- Script Starts Below ----
 function main() {
-  var spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   
   var allKeywordsSheet = getOrCreateSheet(spreadsheet, 'Sheet1');
   var exactSheet = getOrCreateSheet(spreadsheet, 'Exact Match');
@@ -109,6 +109,7 @@ function processCampaignKeywords(allKeywordsSheet, exactSheet, phraseSheet, broa
   }
 }
 
+
 function appendRowToSheet(dataRow, matchType, allKeywordsSheet, exactSheet, phraseSheet, broadSheet) {
   allKeywordsSheet.appendRow(dataRow);
   switch (matchType) {
@@ -146,40 +147,19 @@ function getPerformanceLabel(score, qualityScore, ctr, conversions) {
   }
 }
 
-function getSuggestedAction(qualityScore, ctr, conversions, campaignBiddingStrategy) {
-    let actions = {
-        'Over-performing': [
-            "Expand keywords based on current success patterns",
-            "Tailor ad copy to enhance alignment with search intent",
-            "Optimize landing pages to improve conversion rates further",
-            "Experiment with different ad formats like Responsive Search Ads",
-            "Implement or enhance RLSA strategies"
-        ],
-        'Performing': [
-            "Review and refine match types for balance",
-            "Optimize ad scheduling based on performance data",
-            "Conduct A/B testing on ad elements",
-            "Enhance ad extensions with additional information or links",
-            "Use insights in other marketing channels like SEO or email"
-        ],
-        'Under-performing': [
-            "Pause or remove non-performing keywords",
-            "Adjust match types to prevent low-quality matches",
-            "Redesign landing pages if conversion rates are low",
-            "Reevaluate keyword groupings within ad groups"
-        ]
-    };
-
-    if (campaignBiddingStrategy.includes("Maximize Conversions") || campaignBiddingStrategy.includes("Maximize Conversion Value")) {
-        actions['Over-performing'].push("Increase budget focus on improving ad quality and expanding audiences");
-        actions['Under-performing'].push("Cannot adjust bids directly, focus on improving ad relevance and quality score");
-    }
-
-    if (qualityScore >= SETTINGS.performanceThresholds.high.qualityScore && ctr >= SETTINGS.performanceThresholds.high.ctr && conversions >= SETTINGS.performanceThresholds.high.conversions) {
-        return actions['Over-performing'].join(", ");
-    } else if (qualityScore <= SETTINGS.performanceThresholds.low.qualityScore && conversions <= SETTINGS.performanceThresholds.low.conversions) {
-        return actions['Under-performing'].join(", ");
-    } else {
-        return actions['Performing'].join(", ");
-    }
+function getSuggestedAction(qualityScore, ctr, conversions, biddingStrategy) {
+  var action = "";
+  if (biddingStrategy.includes("Maximize Conversions") || biddingStrategy.includes("Maximize Conversion Value")) {
+    // Actions specific to smart bidding strategies
+    action += "Note: Cannot adjust bids directly due to smart bidding strategy. Focus on improving ad quality and expanding target audiences.";
+  }
+  
+  if (qualityScore >= SETTINGS.performanceThresholds.high.qualityScore && ctr >= SETTINGS.performanceThresholds.high.ctr && conversions >= SETTINGS.performanceThresholds.high.conversions) {
+    action += " Consider narrowing match type for increased relevance. Create a separate campaign for this keyword for better budget control.";
+  } else if (qualityScore <= SETTINGS.performanceThresholds.low.qualityScore && conversions <= SETTINGS.performanceThresholds.low.conversions) {
+    action += " Experiment with broader match types to capture wider audience. Group underperforming keywords separately for targeted improvement testing.";
+  } else {
+    action += " Monitor and optimize creative & landing pages. Check search terms report for new keyword opportunities.";
+  }
+  return action;
 }

@@ -2,7 +2,7 @@
 // Keyword Scoring Script
 // Have custom requests? Email me at adam@adamlasky.me
 //
-// v1 - initial release
+// v2 - initial release
 //
 // -- Make sure you visit https://www.adamlasky.me for more resources
 //
@@ -15,10 +15,10 @@
 // Create a Google Sheet and insert the ID in the Customization Section below
 
 // ---- Customization Section ----
-var SPREADSHEET_ID = '1mehVKMBrx5nEAPjQC-zS3rEYKIbG0MG__KFqrr1QJzk'; // Update with your actual Google Sheet ID
+var SPREADSHEET_URL = 'insert your spreadsheet URL here'; // Update with your actual Google Sheet URL
 
 var SETTINGS = {
-  campaignNameContains: "golfing", // Specify part of the campaign name to include
+  campaignNameContains: "insert your campaign name here", // Specify part of the campaign name to include
   keywordScoreWeights: { // Weights for calculating the keyword score
     ctrWeight: 0.4,
     costWeight: 0.2,
@@ -33,7 +33,7 @@ var SETTINGS = {
 
 // ---- Script Starts Below ----
 function main() {
-  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
   
   var allKeywordsSheet = getOrCreateSheet(spreadsheet, 'Sheet1');
   var exactSheet = getOrCreateSheet(spreadsheet, 'Exact Match');

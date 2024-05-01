@@ -1,0 +1,120 @@
+// Copyright 2024. Adam Lasky. All Rights Reserved.
+// Keyword Scoring Script
+// Have custom requests? Email me at adam@adamlasky.me
+//
+// v2
+//
+// Make sure you visit https://www.adamlasky.me for more resources
+//
+// ABOUT THE SCRIPT
+// This script fetches keyword performance by clicks, conversions, cost, and CPA
+// then categorizes the keywords based on their relative performance as: 'over-performing', 'under-performing', 'needs attention', and 'not enough data'
+// and recommends actions to be taken per keyword.
+// 
+// IMPORTANT NOTES
+// Create a Google Sheet and insert the URL in the Customization Section below
+
+// ---- Customization Section ----
+var SPREADSHEET_URL = 'insert Google Sheet URL here'; // Update with your actual Google Sheet URL
+
+var SETTINGS = {
+  campaignNameContains: "insert campaign name here", // Specify part of the campaign name to include
+  thresholds: { // Customizable thresholds for performance evaluation
+    cpaHigh: 200,
+    cpaLow: 1,
+    clicksMinimum: 1,
+    conversionsMinimum: 1,
+    costMinimum: 1
+  }
+};
+
+function main() {
+  var spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  var sheet = getOrCreateSheet(spreadsheet, 'Keyword Performance');
+
+  var headers = ['Campaign Name', 'Keyword', 'Match Type', 'Clicks', 'Cost', 'Conversions', 'CPA', 'Performance Label'];
+  clearAndSetHeaders(sheet, headers);
+
+  processKeywords(sheet);
+}
+
+function getOrCreateSheet(spreadsheet, sheetName) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+  } else {
+    sheet.clear(); // Clear existing content
+  }
+  return sheet;
+}
+
+function clearAndSetHeaders(sheet, headers) {
+  sheet.clear(); // Clear any existing content
+  sheet.appendRow(headers); // Set new headers
+}
+
+function processKeywords(sheet) {
+  var campaignIterator = AdsApp.campaigns()
+    .withCondition('Name CONTAINS_IGNORE_CASE "' + SETTINGS.campaignNameContains + '"')
+    .withCondition("Status = ENABLED")
+    .get();
+
+  while (campaignIterator.hasNext()) {
+    var campaign = campaignIterator.next();
+    var campaignName = campaign.getName();
+
+    var keywordIterator = campaign.keywords()
+      .withCondition("Status = ENABLED")
+      .get();
+
+    while (keywordIterator.hasNext()) {
+      var keyword = keywordIterator.next();
+      var stats = keyword.getStatsFor("LAST_30_DAYS");
+      var clicks = parseInt(stats.getClicks(), 10);
+      var cost = parseFloat(stats.getCost());
+      var conversions = parseInt(stats.getConversions(), 10);
+      var cpa = conversions > 0 ? cost / conversions : 0;
+      var performanceLabel = getPerformanceLabel(clicks, cost, conversions, cpa);
+
+      var dataRow = [
+        campaignName, keyword.getText(), keyword.getMatchType(), clicks, cost.toFixed(2),
+        conversions, cpa.toFixed(2), performanceLabel
+      ];
+      sheet.appendRow(dataRow);
+    }
+  }
+}
+
+function getPerformanceLabel(clicks, cost, conversions, cpa) {
+  var t = SETTINGS.thresholds;
+  
+  // Check if 'Over-performing'
+  if (cpa < t.cpaHigh && cpa > t.cpaLow) {
+    return 'Over-performing';
+  }
+
+  // Check if 'Cash burner'
+  if (cpa > t.cpaHigh) {
+    return 'Cash burner';
+  }
+
+  // Check if 'Under-performing'
+  if (cost > t.costMinimum && conversions < t.conversionsMinimum) {
+    return 'Under-performing';
+  }
+
+  // Default case for all other conditions
+  return 'Not enough data';
+}
+
+function getSuggestedAction(performanceLabel) {
+  if (performanceLabel === 'Over-performing') {
+    return "Expand keywords based on current success patterns, tailor ad copy to enhance alignment with search intent, optimize landing pages to improve conversion rates further, experiment with different ad formats like Responsive Search Ads, implement or enhance RLSA strategies.";
+  } else if (performanceLabel === 'Under-performing') {
+    return "Reduce bids or pause under-performing keywords, pause or remove non-performing keywords, adjust match types to prevent low-quality matches, redesign landing pages if conversion rates are low, reevaluate keyword groupings within ad groups.";
+  } else if (performanceLabel === 'Cash-burner') {
+    return "Pause cash-burning keywords.";
+  } else {
+    return "Continue to monitor and optimize.";
+  }
+}

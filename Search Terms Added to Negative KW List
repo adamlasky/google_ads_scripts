@@ -4,7 +4,6 @@
 //
 // v.1
 //
-//
 // ABOUT THE SCRIPT
 // This script fetches search term performance by clicks and conversions
 // then adds search terms that exceed the click minimums but not the conversions maximum thresholds.

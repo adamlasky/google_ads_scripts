@@ -1,0 +1,69 @@
+// Copyright 2024. Adam Lasky. All Rights Reserved.
+// Search Terms Added to Negative KW List
+// Have custom requests? Email me at adam@adamlasky.me
+//
+// v.1
+//
+//
+// ABOUT THE SCRIPT
+// This script fetches search term performance by clicks and conversions
+// then adds search terms that exceed the click minimums but not the conversions maximum thresholds.
+// 
+// 
+// IMPORTANT NOTE:
+// Customize the campaignName, clickMinimum, conversionMaximum, negativeListName
+
+function main() {
+  // User-defined settings
+  var settings = {
+    campaignName: "insert campaign name here", // Replace with your campaign name
+    clickMinimum: 3, // Minimum number of clicks
+    conversionMaximum: 0.5, // Maximum number of conversions
+    negativeListName: "insert negative keyword list here" // Replace with your Negative Keyword List Name
+  };
+
+   // Retrieve the specified campaign
+  var campaignIterator = AdsApp.campaigns()
+      .withCondition('Name = "' + settings.campaignName + '"')
+      .get();
+  
+  if (!campaignIterator.hasNext()) {
+    Logger.log("Campaign not found.");
+    return;
+  }
+  var campaign = campaignIterator.next();
+
+  // Retrieve the negative keyword list by name
+  var negativeKeywordListIterator = AdsApp.negativeKeywordLists()
+      .withCondition('Name = "' + settings.negativeListName + '"')
+      .get();
+
+  if (!negativeKeywordListIterator.hasNext()) {
+    Logger.log("Negative keyword list not found.");
+    return;
+  }
+  var negativeKeywordList = negativeKeywordListIterator.next();
+
+  // Prepare to search for search terms over the last 30 days
+  var dateRange = 'LAST_30_DAYS';
+  var report = AdsApp.report(
+    'SELECT Query, Clicks, Conversions ' +
+    'FROM SEARCH_QUERY_PERFORMANCE_REPORT ' +
+    'WHERE CampaignId = ' + campaign.getId() +
+    ' DURING ' + dateRange);
+
+  var rows = report.rows();
+  while (rows.hasNext()) {
+    var row = rows.next();
+    var query = row['Query'];
+    var clicks = parseInt(row['Clicks']);
+    var conversions = parseInt(row['Conversions']);
+
+    // Check if the search query meets the criteria
+    if (clicks >= settings.clickMinimum && conversions <= settings.conversionMaximum) {
+      // Add to negative keyword list as broad match
+      negativeKeywordList.addNegativeKeywords([' ' + query]);
+      Logger.log("Added to negative keyword list: " + query);
+    }
+  }
+}
